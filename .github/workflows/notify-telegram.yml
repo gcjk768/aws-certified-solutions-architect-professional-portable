@@ -1,0 +1,52 @@
+name: Notify Telegram on bank update
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "banks/**"
+      - "CHANGELOG.md"
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 2 }
+      - name: Build bank
+        run: python3 -I build_csv.py
+      - name: Build message
+        id: msg
+        shell: bash
+        run: |
+          python3 - <<'EOF' > msg.txt
+          import csv, html, os, subprocess, collections
+          rows = list(csv.DictReader(open("data/questions.csv", encoding="utf-8")))
+          full = list(csv.DictReader(open("SAP-C03_practice_questions_2026.csv", encoding="utf-8-sig")))
+          c03 = sum(1 for r in full if r["exam_version"].startswith("SAP-C03"))
+          subject = subprocess.run(["git", "log", "-1", "--pretty=%s"], capture_output=True, text=True).stdout.strip()
+          changed = subprocess.run(["git", "diff", "--name-only", "HEAD~1", "HEAD"], capture_output=True, text=True).stdout.split()
+          banks = [f for f in changed if f.startswith("banks/")]
+          sha = os.environ["GITHUB_SHA"][:7]; repo = os.environ["GITHUB_REPOSITORY"]
+          lines = ["📚 <b>SAP-C03 QUESTION BANK</b> · updated", "",
+                   f"🆕 <b>{html.escape(subject)}</b>",
+                   f"📊 {len(rows)} quiz questions · {len(full)} total rows · {c03} on SAP-C03 topics"]
+          if banks: lines.append("📄 " + html.escape(", ".join(os.path.basename(b) for b in banks)))
+          lines.append(f'🔗 <a href="https://github.com/{repo}/commit/{sha}">Commit {sha}</a>')
+          lines.append("<i>Restart the NAS bot to load the new questions.</i>")
+          print("\n".join(lines))
+          EOF
+      - name: Send
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TOPIC: ${{ secrets.TELEGRAM_TOPIC_ID }}
+        run: |
+          curl -sS -o /dev/null -w "%{http_code}\n" "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT}" --data-urlencode "message_thread_id=${TOPIC}" \
+            --data-urlencode "parse_mode=HTML" --data-urlencode "disable_web_page_preview=true" \
+            --data-urlencode "text@msg.txt" \
+          || curl -sS -o /dev/null "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT}" --data-urlencode "message_thread_id=${TOPIC}" \
+            --data-urlencode "text@msg.txt"
