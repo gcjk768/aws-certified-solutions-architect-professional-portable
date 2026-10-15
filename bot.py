@@ -50,7 +50,8 @@ BOT_CHAT = (int(_bc[0]), int(_bc[1]) if len(_bc) > 1 else None) if _bc[0] else N
 QUIZ_EVERY_MIN = int(os.environ.get("QUIZ_EVERY_MIN", "60"))
 _qh = os.environ.get("QUIZ_HOURS", "09:00-22:59").split("-")
 QUIZ_START, QUIZ_END = (tuple(int(x) for x in t.split(":")) for t in _qh)
-TITLE = {"q": "📝", "ok": "🟢", "bad": "🔴", "tutor": "🎓", "stats": "📊"}
+STUDY_EVERY_MIN = int(os.environ.get("STUDY_EVERY_MIN", "180"))   # study card cadence inside QUIZ_HOURS; 0 = off
+TITLE = {"q": "📝", "ok": "🟢", "bad": "🔴", "tutor": "🎓", "stats": "📊", "study": "📚"}
 
 # ── Questions + progress ─────────────────────────────────────────────────────
 
@@ -64,6 +65,24 @@ def load_questions() -> dict[str, dict]:
 
 
 QUESTIONS = load_questions()
+NOTES_PATH = DATA / "study_notes.csv"   # built by build_notes.py from the course slides (private)
+
+
+def load_notes() -> dict[str, dict]:
+    if not NOTES_PATH.exists():
+        return {}
+    with NOTES_PATH.open(encoding="utf-8") as f:
+        return {r["id"]: r for r in csv.DictReader(f) if r["bullets"] or r["labels"]}
+
+
+NOTES = load_notes()
+
+
+def pick_note(state: dict) -> dict:
+    """Random note not yet studied; start over when all are done. Pure, so it can be tested."""
+    done = set(state.get("studied", []))
+    pool = [i for i in NOTES if i not in done] or list(NOTES)
+    return NOTES[random.choice(pool)]
 PICKED: dict[tuple[int, int], set[str]] = {}   # (chat, msg) -> toggled letters (multi-select)
 
 
@@ -111,6 +130,7 @@ def keyboard(q: dict, picked: set[str] = frozenset()) -> InlineKeyboardMarkup:
 NEXT_ROW = [InlineKeyboardButton("➡️ Next question", callback_data="next"),
             InlineKeyboardButton("📊 Stats", callback_data="stats")]
 NEXT_KB = InlineKeyboardMarkup([NEXT_ROW])
+STUDY_KB = InlineKeyboardMarkup([[InlineKeyboardButton("📚 Another topic", callback_data="study")] + NEXT_ROW])
 
 
 def after_kb(q: dict, picked: set[str]) -> InlineKeyboardMarkup:
@@ -302,8 +322,8 @@ class Dest:
         return self.bot.send_photo(self.chat_id, photo, message_thread_id=self.thread, **kw)
 
 
-async def send_question(chat, state: dict) -> None:
-    q = pick_question(state)
+async def send_question(chat, state: dict, q: dict | None = None) -> None:
+    q = q or pick_question(state)
     await chat.send_message(question_text(q), reply_markup=keyboard(q))
     state["pending"] = q["id"]          # the auto-quiz waits until this one is answered
     save_state(state)
@@ -322,13 +342,71 @@ async def auto_quiz(ctx: ContextTypes.DEFAULT_TYPE) -> None:
         await send_question(Dest(None, ctx.bot), state)
 
 
+# ── Study cards (slides -> Claude note + diagram) ────────────────────────────
+
+STUDY = """You are a tutor for the AWS Certified Solutions Architect - Professional (SAP-C03) exam.
+You get one slide topic from a course deck: title, section, the slide's bullet points and the text
+labels of the slide's diagram. Write a study card in under 180 words of plain language: what the
+service/feature is, when the exam expects you to pick it (and over what alternatives), and the one or
+two gotchas examiners test. No markdown, no headings, no bold.
+A DIAGRAM IS ALWAYS REQUIRED: redraw the slide's architecture (use the diagram labels as the nodes
+and the flow they imply) as a Python script for the `diagrams` library with OFFICIAL icons
+(diagrams.aws.*, diagrams.onprem.*, diagrams.generic.*, diagrams.saas.*; only import from `diagrams`).
+`with Diagram("<title>", filename="out", show=False, direction="LR", graph_attr={"pad": "0.6",
+"nodesep": "0.7", "ranksep": "1.1", "fontsize": "18", "bgcolor": "white"}):`; group parts in
+`Cluster("...")`; label edges with `Edge(label="...")`; number the steps; 4 to 10 nodes. If the slide
+has no components at all (a pure comparison or rule), use kind "mermaid" with a flowchart instead.
+Answer as JSON with exactly three string keys: "teach", "kind", "code"."""
+
+
+async def send_study(chat, state: dict, note: dict | None = None) -> None:
+    """One study card: Claude's note from the slide bullets, the slide's diagram redrawn, quiz button."""
+    note = note or pick_note(state)
+    msg = await chat.send_message(f"⏳ <i>Preparing a study card on {html.escape(note['title'])}…</i>")
+    prompt = (f"TITLE: {note['title']}\nSECTION: {note['section']}\n\nBULLETS:\n{note['bullets']}\n\n"
+              f"DIAGRAM LABELS: {note['labels']}\n\n"
+              'Reply with ONLY a JSON object: {"teach": "...", "kind": "diagrams|mermaid", "code": "..."}.')
+    try:
+        data = await run_claude(STUDY, prompt, SCHEMA)
+        out = data.get("structured_output") if isinstance(data.get("structured_output"), dict) else None
+        if not out:
+            text = str(data.get("result") or "")
+            out = json.loads(text[text.find("{"):text.rfind("}") + 1])
+    except Exception as exc:
+        log.warning("study card failed: %s", exc)
+        await msg.edit_text(f"⚠️ Study card unavailable: <code>{html.escape(str(exc)[:200])}</code>", reply_markup=STUDY_KB)
+        return
+    related = [i for i in note["related"].split(",") if i in QUESTIONS]
+    rows = [[InlineKeyboardButton(f"📝 Quiz me on this ({related[0]})", callback_data=f"q|{related[0]}")]] if related else []
+    rows.append([InlineKeyboardButton("📚 Another topic", callback_data="study"), InlineKeyboardButton("📝 Random question", callback_data="next")])
+    kb = InlineKeyboardMarkup(rows)
+    head = f"{TITLE['study']} <b>STUDY</b> · {html.escape(note['section'])}\n\n<b>{html.escape(note['title'])}</b>\n\n"
+    tail = f"\n\n<i>Slides p.{html.escape(note['pages'])}</i>"
+    await msg.edit_text((head + html.escape(str(out.get("teach", "")).strip().replace("**", "")))[:4000 - len(tail)] + tail)
+    await send_diagram(chat, {"id": note["title"][:40], "correct": "slide"}, out, kb)
+    state.setdefault("studied", []).append(note["id"])
+    save_state(state)
+    vault_log(f"{TITLE['study']} **study card**", f"{note['id']} {note['title']}")
+
+
+async def auto_study(ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    now = datetime.now(SGT)
+    if BOT_CHAT and NOTES and QUIZ_START <= (now.hour, now.minute) <= QUIZ_END:
+        await send_study(Dest(None, ctx.bot), load_state())
+
+
+async def cmd_study(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if allowed(update):
+        await send_study(Dest(update, ctx.bot), load_state())
+
+
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not allowed(update):
         await update.message.reply_html(f"🪪 Your ID is <code>{update.effective_user.id}</code>. Add it to ALLOWED_USER_IDS.")
         return
     await update.message.reply_html(
         f"🎓 <b>SAP-C03 QUIZ</b> · {len(QUESTIONS)} practice questions\n\n"
-        "/quiz · a random question\n/stats · progress by domain\n/reset · start over\n\n"
+        "/quiz · a random question\n/study · a study card + diagram from the slides\n/stats · progress by domain\n/reset · start over\n\n"
         "<i>Tap a letter to answer. 'Select two' questions: tap both, then Submit.</i>")
     await send_question(Dest(update, ctx.bot), load_state())
 
@@ -493,9 +571,15 @@ async def on_button(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if data == "stats":
         await chat.send_message(stats_text(state))
         return
+    if data == "study":
+        await send_study(chat, state)
+        return
     kind, qid, *rest = data.split("|")
     q = QUESTIONS.get(qid)
     if not q:
+        return
+    if kind == "q":                                   # "Quiz me on this" under a study card
+        await send_question(chat, state, q)
         return
     if kind == "e":                                   # Explain more (one-shot button)
         await cq.edit_message_reply_markup(NEXT_KB)
@@ -590,7 +674,8 @@ async def explain(chat, q: dict, picked: set[str]) -> None:
 
 
 async def post_init(app: Application) -> None:
-    await app.bot.set_my_commands([BotCommand("quiz", "Random question"), BotCommand("stats", "Progress"),
+    await app.bot.set_my_commands([BotCommand("quiz", "Random question"), BotCommand("study", "Study card + diagram"),
+                                   BotCommand("stats", "Progress"),
                                    BotCommand("explain", "Claude explains the last question"),
                                    BotCommand("report", "Weekly score + exam readiness"),
                                    BotCommand("refresh", "Reload the question bank from disk"),
@@ -608,12 +693,14 @@ def main() -> None:
     from telegram.ext import Defaults
     app = (Application.builder().token(token).post_init(post_init)
            .defaults(Defaults(parse_mode=ParseMode.HTML, link_preview_options=None)).build())
-    for name, fn in [("start", cmd_start), ("quiz", cmd_quiz), ("stats", cmd_stats), ("explain", cmd_explain),
+    for name, fn in [("start", cmd_start), ("quiz", cmd_quiz), ("study", cmd_study), ("stats", cmd_stats), ("explain", cmd_explain),
                      ("reset", cmd_reset), ("whoami", cmd_whoami), ("refresh", cmd_refresh), ("report", cmd_report)]:
         app.add_handler(CommandHandler(name, fn))
     app.add_handler(CallbackQueryHandler(on_button))
     if QUIZ_EVERY_MIN and BOT_CHAT and app.job_queue:
         app.job_queue.run_repeating(auto_quiz, interval=QUIZ_EVERY_MIN * 60, first=30)
+    if STUDY_EVERY_MIN and BOT_CHAT and NOTES and app.job_queue:   # a slide topic every few hours, random order, no repeats
+        app.job_queue.run_repeating(auto_study, interval=STUDY_EVERY_MIN * 60, first=120)
     if BOT_CHAT and app.job_queue:   # Sunday 09:00 SGT: reload the bank (the cloud routine commits new questions; deploy copies the CSV)
         from datetime import time as dtime
         app.job_queue.run_daily(refresh_bank, time=dtime(9, 0, tzinfo=SGT), days=(0,))

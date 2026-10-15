@@ -18,10 +18,11 @@ A self-hosted Telegram study bot for the **AWS Certified Solutions Architect –
 | **Right** | Verdict + the bank's explanation + a 🎓 *Explain more* button (Claude is only called if you tap it). |
 | **Wrong** | Verdict + explanation, then an **AWS architecture diagram** drawn by Claude and rendered with [`diagrams`](https://diagrams.mingrammer.com) + Graphviz using **official AWS icons**. 🎓 *Explain more* reveals the tutor text, already generated, so it costs nothing. |
 | **Hourly drill** | A question every `QUIZ_EVERY_MIN` minutes inside `QUIZ_HOURS` (default 09:00–22:59), only after you answered the previous one. `/quiz` works any time. |
+| **Study cards** | Every `STUDY_EVERY_MIN` minutes (default 180) a random topic from your own slide deck: Claude writes a short study note from the slide's bullets and redraws the slide's diagram with official AWS icons, with a *Quiz me on this* button that serves the closest question in the bank. Build the notes once with `python build_notes.py <slides.pdf>` (the PDF and `data/study_notes.csv` stay private). `/study` on demand. |
 | **Sunday 22:00 · report** | This week's right/wrong, first-try accuracy per bank, a predicted score on the 1000 scale (pass mark 750), a readiness verdict, and a short Claude coach note naming what to drill next. `/report` on demand. |
 | **Growing bank** | Questions live in `banks/*.md` (format in [`AGENT.md`](AGENT.md)). A scheduled Claude cloud agent can hunt for new, legitimate practice questions every week and commit them; a GitHub Actions workflow posts a notice to your Telegram topic. `/refresh` reloads the bank after a deploy. |
 
-Commands: `/quiz` `/explain` `/report` `/stats` `/refresh` `/reset` `/whoami`
+Commands: `/quiz` `/study` `/explain` `/report` `/stats` `/refresh` `/reset` `/whoami`
 
 ## What ships in this repo
 

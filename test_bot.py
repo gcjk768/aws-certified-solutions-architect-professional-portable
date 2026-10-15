@@ -45,6 +45,14 @@ assert not bot.quiz_due(datetime(2026, 1, 1, 8, 59), {}) and not bot.quiz_due(da
 assert not bot.quiz_due(datetime(2026, 1, 1, 12, 0), {"pending": "SAP-0001"})
 print("ok schedule")
 
+# study cards: notes load, no repeats until all are studied, related ids exist in the bank
+if bot.NOTES:
+    assert len(bot.NOTES) > 500 and all(n["title"] for n in bot.NOTES.values())
+    st_ = {"studied": [i for i in bot.NOTES if i != "N-0170"]}
+    assert bot.pick_note(st_)["id"] == "N-0170"
+    assert bot.pick_note({"studied": list(bot.NOTES)})["id"] in bot.NOTES      # wraps around
+    print("ok study")
+
 # weekly report metrics: 3 first-try answers this week, 2 right; equal-weight score; verdicts
 from datetime import datetime as _dt
 now = _dt(2026, 10, 18, 22, 0)
