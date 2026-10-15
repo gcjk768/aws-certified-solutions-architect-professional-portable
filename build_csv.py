@@ -126,8 +126,31 @@ if have("src_www_mindmeshacademy_com_certifications_a.md"):
         add("MindMesh Academy free SAP-C02 samples", "https://www.mindmeshacademy.com/certifications/aws/aws-certified-solutions-architect-professional/practice-exam",
             "SAP-C02", len(ans.replace(" ", "").split(",")), q, opts, ans.replace(" ", ""), ex, topic.strip())
 
+# 5e. Local .docx "Amazon SAP-C02 Sample Questions" files (sources/*.docx, gitignored): paragraphs
+#     "Question # n" / question / "A. ...B. ...C. ..." (options glued) / "Answer: B[,D]Explanation:..."
+import zipfile, glob
+for _f in sorted(glob.glob(os.path.join(SRC, "*.docx"))):
+    x = zipfile.ZipFile(_f).read("word/document.xml").decode("utf-8")
+    paras = ["".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", p, re.S)) for p in re.findall(r"<w:p[ >].*?</w:p>", x, re.S)]
+    paras = [html.unescape(p) for p in paras if p.strip()]
+    for i, p in enumerate(paras):
+        if not p.startswith("Question #"): continue
+        q, optline, ansline = paras[i + 1], paras[i + 2], paras[i + 3]
+        # options are concatenated ("...devicesB. Configure", "...ALBB. Create"): walk the letters in order,
+        # next marker = "<letter>. <Uppercase>" after the current option start
+        pos, opts, L = 0, {}, "A"
+        while True:
+            m = re.compile(chr(ord(L) + 1) + r"\.\s+(?=[A-Z])").search(optline, pos + 3) if L < "E" else None
+            opts[L] = optline[pos + 3 : m.start() if m else len(optline)]
+            if not m: break
+            pos, L = m.start(), chr(ord(L) + 1)
+        m = re.match(r"Answer:\s*([A-E](?:\s*,\s*[A-E])*)\s*(?:Explanation:?\s*)?(.*)", ansline, re.S)
+        ans = m.group(1).replace(" ", "")
+        add("Local SAP-C02 sample-question .docx (" + os.path.basename(_f) + ")", "sources/" + os.path.basename(_f),
+            "SAP-C02", len(ans.split(",")), q, opts, ans, m.group(2) or "(no explanation in source)")
+
 # 5b. Authored banks in banks/*.md (see AGENT.md for the format): header lines source/url/version, numbered questions, answer table
-import glob
+
 for _f in sorted(glob.glob(os.path.join(HERE, "banks", "*.md"))):
   t = open(_f, encoding="utf-8").read()
   hdr = dict(re.findall(r"^(source|url|version): (.*)$", t.split("\n## ", 1)[0], flags=re.M))
@@ -169,6 +192,7 @@ SHORT = {"AWS official SAP-C02 sample questions": "AWS official sample",
          "Claude-written SAP-C03 new-topic bank (2026-10-14, unofficial)": "SAP-C03 new topics",
          "renehmj/aws-trainer SAP-C02 bank (GitHub, MIT)": "aws-trainer bank",
          "MindMesh Academy free SAP-C02 samples": "MindMesh samples"}
+SHORT.update({s: "SAP-C02 docx samples" for s in {r["source"] for r in rows} if s.startswith("Local SAP-C02 sample")})
 bot_path = os.path.join(HERE, "data", "questions.csv")
 os.makedirs(os.path.dirname(bot_path), exist_ok=True)
 with open(bot_path, "w", newline="", encoding="utf-8") as f:
