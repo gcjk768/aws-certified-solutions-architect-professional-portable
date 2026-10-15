@@ -3,7 +3,7 @@ source: Claude-written SAP-C03 new-topic bank (2026-10-14, unofficial)
 url: banks/2026-10-14-claude-sap-c03-new-topics-1.md
 version: SAP-C03 (announced topic)
 
-40 original scenario questions written 2026-10-14 by Claude (Fable 5.1) for James, covering every new skill area AWS named for SAP-C03 in its 1 September 2026 announcement. Not official AWS content; verify any service detail against the current docs before exam day. Multi-select questions say "Select TWO". Answers in the table at the end.
+40 original scenario questions written 2026-10-14 by Claude (Fable 5.1) for the owner, covering every new skill area AWS named for SAP-C03 in its 1 September 2026 announcement. Not official AWS content; verify any service detail against the current docs before exam day. Multi-select questions say "Select TWO". Answers in the table at the end.
 
 ## Generative AI and agentic AI
 
