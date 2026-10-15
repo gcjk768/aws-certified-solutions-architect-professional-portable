@@ -46,7 +46,7 @@ jobs:
           curl -sS -o /dev/null -w "%{http_code}\n" "https://api.telegram.org/bot${TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${CHAT}" --data-urlencode "message_thread_id=${TOPIC}" \
             --data-urlencode "parse_mode=HTML" --data-urlencode "disable_web_page_preview=true" \
-            --data-urlencode "<EMAIL>" \
+            --data-urlencode "text@./msg.txt" \
           || curl -sS -o /dev/null "https://api.telegram.org/bot${TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${CHAT}" --data-urlencode "message_thread_id=${TOPIC}" \
-            --data-urlencode "<EMAIL>"
+            --data-urlencode "text@./msg.txt"
