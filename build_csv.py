@@ -149,6 +149,11 @@ for _f in sorted(glob.glob(os.path.join(SRC, "*.docx"))):
         add("Local SAP-C02 sample-question .docx (" + os.path.basename(_f) + ")", "sources/" + os.path.basename(_f),
             "SAP-C02", len(ans.split(",")), q, opts, ans, m.group(2) or "(no explanation in source)")
 
+# 5f. Online sources downloaded into sources/online/ (2026-10-16 research): see online_parsers.py
+sys.path.insert(0, HERE)          # python -I drops the script dir from sys.path
+import online_parsers
+online_parsers.parse_all(os.path.join(SRC, "online"), add)
+
 # 5b. Authored banks in banks/*.md (see AGENT.md for the format): header lines source/url/version, numbered questions, answer table
 
 for _f in sorted(glob.glob(os.path.join(HERE, "banks", "*.md"))):
@@ -191,7 +196,11 @@ SHORT = {"AWS official SAP-C02 sample questions": "AWS official sample",
          "sailor.sh SAP-C02 practice questions (2026-04-17)": "sailor.sh scenarios",
          "Claude-written SAP-C03 new-topic bank (2026-10-14, unofficial)": "SAP-C03 new topics",
          "renehmj/aws-trainer SAP-C02 bank (GitHub, MIT)": "aws-trainer bank",
-         "MindMesh Academy free SAP-C02 samples": "MindMesh samples"}
+         "MindMesh Academy free SAP-C02 samples": "MindMesh samples",
+         "open-exam-prep.com free SAP practice": "open-exam-prep", "certsafari.com free SAP samples": "CertSafari samples",
+         "certland.net free SAP samples": "Certland samples", "PatrickWiloak practice questions (GitHub, CC BY 4.0)": "PatrickWiloak bank",
+         "Whizlabs blog SAP sample questions": "Whizlabs blog", "examcert.app SAP-C02 blog questions": "examcert.app blog",
+         "Digital Cloud Training free SAP questions": "Digital Cloud samples", "techpracticeexams.com SAP-C02 blog questions": "techpracticeexams blog"}
 SHORT.update({s: "SAP-C02 docx samples" for s in {r["source"] for r in rows} if s.startswith("Local SAP-C02 sample")})
 bot_path = os.path.join(HERE, "data", "questions.csv")
 os.makedirs(os.path.dirname(bot_path), exist_ok=True)
