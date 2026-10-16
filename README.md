@@ -29,7 +29,7 @@ Commands: `/quiz` `/study` `/explain` `/report` `/stats` `/refresh` `/reset` `/w
 - **80 original SAP-C03 scenario questions** in `banks/`, written for the new skill areas AWS announced for SAP-C03 (Bedrock agents and guardrails, AgentCore, resilience engineering, VPC Lattice, DevSecOps, Iceberg lakehouse and Clean Rooms, post-quantum KMS). Unofficial; verify details against the AWS docs.
 - The bot, the bank builder, the Docker files and the architecture diagram.
 
-Third-party practice questions (AWS's official sample questions, community sites, other GitHub banks) are **not** redistributed here. `build_csv.py` knows how to parse several of them from files you download yourself into `sources/` (see the parser sections for the expected file names); anything missing is skipped. Your compiled `data/questions.csv` stays on your disk.
+Third-party practice questions (AWS's official sample questions, community sites, other GitHub banks) are **not** redistributed here. `online_parsers.py` parses pages downloaded into `sources/online/` (open-exam-prep, certsafari, certland, PatrickWiloak's CC BY bank, Whizlabs/examcert/Digital Cloud/techpracticeexams blog samples). `build_csv.py` knows how to parse several of them from files you download yourself into `sources/` (see the parser sections for the expected file names); anything missing is skipped. Your compiled `data/questions.csv` stays on your disk.
 
 ## Files
 
