@@ -784,6 +784,51 @@ async def post_init(app: Application) -> None:
                                    BotCommand("reset", "Clear progress"), BotCommand("whoami", "Your ID")])
 
 
+# ── SAP-C03 exam guide watch: AWS publishes it around 27 Oct 2026; check once a day, alert once ──
+GUIDE_INDEX = "https://docs.aws.amazon.com/aws-certification/latest/examguides/"
+GUIDE_FLAG = DATA / "sapc03_guide.txt"        # holds the guide URL once alerted (own file: a progress reset keeps it)
+_GUIDE_LINK = [re.compile(r"\[[^\]]*SAP-C03[^\]]*\]\((https?://[^)\s]+)\)"),
+               re.compile(r"\((https://docs\.aws\.amazon\.com/aws-certification/latest/[\w/-]*solutions-architect-professional-03[\w/-]*\.html)\)")]
+_GUIDE_DOMAIN = re.compile(r"(Domain \d+\s*:[^\n|%]{3,120}?)[\s|*(:]*(\d{1,2})\s*%")
+
+
+def jina(url: str) -> str:
+    """Read a page through Jina Reader (Agent Reach backend; one request, no scraping tricks)."""
+    req = urllib.request.Request(f"https://r.jina.ai/{url}", headers={"User-Agent": "sapc03-quiz-bot"})
+    return urllib.request.urlopen(req, timeout=90).read().decode("utf-8", "replace")
+
+
+def find_guide() -> tuple[str, list[tuple[str, int]]] | None:
+    """(guide URL, [(domain, weight %)]) once AWS lists the SAP-C03 exam guide, else None."""
+    index = jina(GUIDE_INDEX)
+    m = next((m for rx in _GUIDE_LINK if (m := rx.search(index))), None)
+    if not m:
+        return None
+    url = m.group(1)
+    doms = [(re.sub(r"\s+", " ", d).strip(" *#:"), int(w)) for d, w in _GUIDE_DOMAIN.findall(jina(url))]
+    return url, list(dict.fromkeys(doms))
+
+
+async def guide_watch(ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if GUIDE_FLAG.exists():
+        return
+    try:
+        found = await asyncio.to_thread(find_guide)
+    except Exception as exc:
+        log.warning("guide watch failed: %s", exc)
+        return
+    if not found:
+        return
+    url, doms = found
+    GUIDE_FLAG.write_text(url, encoding="utf-8")
+    vault_log("📘 **SAP-C03 exam guide published**", url)
+    lines = ["📘 <b>SAP-C03 EXAM GUIDE</b> · published", "", f'🌐 <a href="{html.escape(url)}">Open the exam guide</a>']
+    if doms:
+        lines += ["", "<b>Domains and weights</b>"] + [f"• {html.escape(d)} · {w}%" for d, w in doms]
+    lines += ["", "<i>Next: ask Claude to set the official WEIGHTS, re-tag with build_domains.py and add the task statements to the study notes.</i>"]
+    await Dest(None, ctx.bot).send_message("\n".join(lines))
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)   # its INFO lines print the bot token
@@ -807,6 +852,7 @@ def main() -> None:
         from datetime import time as dtime
         app.job_queue.run_daily(refresh_bank, time=dtime(9, 0, tzinfo=SGT), days=(0,))
         app.job_queue.run_daily(weekly_report, time=dtime(22, 0, tzinfo=SGT), days=(0,))   # Sunday 22:00 SGT
+        app.job_queue.run_daily(guide_watch, time=dtime(9, 15, tzinfo=SGT))   # until the SAP-C03 guide is out
         log.info("auto-quiz every %d min between %02d:%02d and %02d:%02d SGT",
                  QUIZ_EVERY_MIN, *QUIZ_START, *QUIZ_END)
     log.info("%d questions loaded, model=%s", len(QUESTIONS), MODEL)

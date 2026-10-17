@@ -97,3 +97,14 @@ print("ok diagrams + study next")
 assert all(q["domain"] in bot.WEIGHTS for q in bot.QUESTIONS.values()), {q["domain"] for q in bot.QUESTIONS.values()} - set(bot.WEIGHTS)
 assert sum(bot.WEIGHTS.values()) == 100 and all(q["source"] for q in bot.QUESTIONS.values())
 print("ok domains")
+
+
+# SAP-C03 guide watch: nothing until AWS lists the guide, then its URL and domain weights (no network: jina is faked)
+pages = {bot.GUIDE_INDEX: "[AWS Certified Solutions Architect - Professional (SAP-C02)](https://docs.aws.amazon.com/aws-certification/latest/solutions-architect-professional-02.html)"}
+bot.jina = lambda url: pages[url]
+assert bot.find_guide() is None
+g = "https://docs.aws.amazon.com/aws-certification/latest/solutions-architect-professional-03.html"
+pages[bot.GUIDE_INDEX] += f"\n[AWS Certified Solutions Architect - Professional (SAP-C03)]({g})"
+pages[g] = "| Domain 1: Design Solutions for Organizational Complexity | 26% |\n| Domain 2: Design for New Solutions | 29% |"
+assert bot.find_guide() == (g, [("Domain 1: Design Solutions for Organizational Complexity", 26), ("Domain 2: Design for New Solutions", 29)]), bot.find_guide()
+print("ok guide watch")
